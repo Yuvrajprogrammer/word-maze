@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Beautiful Word Search</title>
+
+<style>
+body{
+ font-family:Poppins, sans-serif;
+ margin:0;
+ background:linear-gradient(135deg,#141e30,#243b55);
+ color:white;
+ text-align:center;
+}
+
+/* THEMES */
+#themes{
+ display:flex;
+ overflow-x:auto;
+ gap:10px;
+ padding:15px;
+}
+
+.theme{
+ min-width:130px;
+ padding:12px;
+ border-radius:12px;
+ background:rgba(255,255,255,0.15);
+ backdrop-filter:blur(8px);
+ cursor:pointer;
+ font-weight:bold;
+ transition:0.3s;
+}
+
+.theme:hover{transform:scale(1.1);}
+.theme.active{background:#ffd54f;color:black;}
+
+/* GRID */
+.grid{
+ display:grid;
+ grid-template-columns:repeat(12,40px);
+ gap:5px;
+ justify-content:center;
+ margin-top:10px;
+}
+
+.cell{
+ width:40px;height:40px;
+ background:white;color:black;
+ display:flex;align-items:center;justify-content:center;
+ font-weight:bold;
+ border-radius:8px;
+ cursor:pointer;
+}
+
+.selected{background:#ffd54f;}
+.found{background:#00c853;color:white;}
+
+/* CLUE BOX */
+.box{
+ margin-top:15px;
+ background:rgba(255,255,255,0.1);
+ padding:10px;
+ border-radius:10px;
+}
+
+.progress{
+ height:8px;
+ background:#333;
+ border-radius:10px;
+ margin-top:5px;
+ overflow:hidden;
+}
+.bar{
+ height:100%;
+ background:#00e5ff;
+ width:0%;
+}
+
+/* POPUP */
+.overlay{
+ position:fixed;
+ top:0;left:0;
+ width:100%;height:100%;
+ background:rgba(0,0,0,0.7);
+ display:none;
+}
+
+.popup{
+ position:fixed;
+ top:50%;left:50%;
+ transform:translate(-50%,-50%);
+ background:white;color:black;
+ padding:25px;
+ border-radius:15px;
+ display:none;
+}
+
+.stars{font-size:28px;color:gold;}
+</style>
+</head>
+
+<body>
+
+<h2>🔥 Word Search Game</h2>
+
+<div id="themes"></div>
+<button onclick="startGame()">Start Game</button>
+
+<div id="grid" class="grid"></div>
+
+<div class="box">
+<p id="clue"></p>
+<button onclick="skip()">Skip ⏭</button>
+<p id="timer"></p>
+<div class="progress"><div class="bar" id="bar"></div></div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="popup" id="popup"></div>
+
+<script>
+
+/* THEMES */
+const themes = {
+
+"India Places":[
+{word:"DELHI",clue:"Capital of India"},
+{word:"MUMBAI",clue:"Financial capital"},
+{word:"JAIPUR",clue:"Pink City"},
+{word:"GOA",clue:"Beach state"},
+{word:"AGRA",clue:"Taj Mahal city"},
+{word:"KERALA",clue:"God's Own Country"},
+{word:"LADAKH",clue:"Cold desert"}
+],
+
+"Animals":[
+{word:"TIGER",clue:"National animal"},
+{word:"LION",clue:"King of jungle"},
+{word:"ELEPHANT",clue:"Largest land animal"},
+{word:"ZEBRA",clue:"Striped animal"},
+{word:"GIRAFFE",clue:"Tallest animal"},
+{word:"MONKEY",clue:"Tree climber"},
+{word:"KANGAROO",clue:"Jumps with pouch"}
+],
+
+"Fruits":[
+{word:"MANGO",clue:"King of fruits"},
+{word:"APPLE",clue:"Keeps doctor away"},
+{word:"BANANA",clue:"Yellow fruit"},
+{word:"ORANGE",clue:"Vitamin C fruit"},
+{word:"GRAPES",clue:"Used to make wine"},
+{word:"PAPAYA",clue:"Good for digestion"},
+{word:"GUAVA",clue:"Seed-filled fruit"}
+],
+
+"Sports":[
+{word:"CRICKET",clue:"Bat and wicket game"},
+{word:"HOCKEY",clue:"National sport"},
+{word:"FOOTBALL",clue:"World Cup sport"},
+{word:"TENNIS",clue:"Racket game"},
+{word:"BADMINTON",clue:"Shuttle game"},
+{word:"KABADDI",clue:"Indian contact sport"},
+{word:"GOLF",clue:"Ball into hole"}
+],
+
+"Space":[
+{word:"PLANET",clue:"Earth"},
+{word:"GALAXY",clue:"Milky Way"},
+{word:"ASTEROID",clue:"Rock in space"},
+{word:"COMET",clue:"Has a tail"},
+{word:"SATELLITE",clue:"Orbits a planet"},
+{word:"ROCKET",clue:"Used for space travel"},
+{word:"NEBULA",clue:"Gas cloud in space"}
+],
+
+"Technology":[
+{word:"COMPUTER",clue:"Electronic machine"},
+{word:"INTERNET",clue:"Global network"},
+{word:"ROBOT",clue:"Automated machine"},
+{word:"SOFTWARE",clue:"Programs in a system"},
+{word:"HARDWARE",clue:"Physical parts"},
+{word:"ALGORITHM",clue:"Step-by-step logic"},
+{word:"DATABASE",clue:"Stores structured data"}
+],
+
+"School Essentials":[
+{word:"BOOK",clue:"Used for reading"},
+{word:"PENCIL",clue:"Used for writing"},
+{word:"ERASER",clue:"Removes pencil marks"},
+{word:"RULER",clue:"Measures length"},
+{word:"BAG",clue:"Carries books"},
+{word:"NOTEBOOK",clue:"Used for notes"},
+{word:"SHARPENER",clue:"Sharpens pencils"}
+]
+
+};
+
+let currentTheme="India";
+let grid=[],size=12;
+let words=[],queue=[],skipped=[];
+let selectedCells=[],selectedWord="";
+let currentClue;
+let startTime,interval,found=0;
+
+/* LOAD THEMES */
+function loadThemes(){
+ let div=document.getElementById("themes");
+ Object.keys(themes).forEach(t=>{
+  let d=document.createElement("div");
+  d.className="theme";
+  d.innerText=t;
+
+  d.onclick=()=>{
+    currentTheme=t;
+    document.querySelectorAll(".theme").forEach(x=>x.classList.remove("active"));
+    d.classList.add("active");
+  };
+
+  div.appendChild(d);
+ });
+}
+loadThemes();
+
+/* START */
+function startGame(){
+ grid=Array.from({length:size},()=>Array(size).fill(""));
+ words=[...themes[currentTheme]];
+ queue=[...words];
+ skipped=[];
+ found=0;
+
+ startTime=Date.now();
+ startTimer();
+
+ words.forEach(w=>place(w.word));
+ fill();
+ draw();
+ nextClue();
+ updateBar();
+}
+
+/* TIMER */
+function startTimer(){
+ clearInterval(interval);
+ interval=setInterval(()=>{
+  let t=Math.floor((Date.now()-startTime)/1000);
+  document.getElementById("timer").innerText="Time: "+t+"s";
+ },1000);
+}
+
+/* PLACE */
+function place(word){
+ let placed=false;
+ while(!placed){
+  let r=Math.floor(Math.random()*size);
+  let c=Math.floor(Math.random()*size);
+  let dir=Math.random()<0.5?"h":"v";
+
+  let ok=true;
+  for(let i=0;i<word.length;i++){
+   let nr=r+(dir=="v"?i:0);
+   let nc=c+(dir=="h"?i:0);
+   if(nr>=size||nc>=size||grid[nr][nc]!="") ok=false;
+  }
+
+  if(ok){
+   for(let i=0;i<word.length;i++){
+    let nr=r+(dir=="v"?i:0);
+    let nc=c+(dir=="h"?i:0);
+    grid[nr][nc]=word[i];
+   }
+   placed=true;
+  }
+ }
+}
+
+function fill(){
+ let letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+ for(let i=0;i<size;i++)
+  for(let j=0;j<size;j++)
+   if(grid[i][j]=="")
+    grid[i][j]=letters[Math.floor(Math.random()*26)];
+}
+
+/* DRAW */
+function draw(){
+ let g=document.getElementById("grid");
+ g.innerHTML="";
+ grid.forEach(row=>{
+  row.forEach(val=>{
+   let d=document.createElement("div");
+   d.className="cell";
+   d.innerText=val;
+   d.onclick=()=>clickCell(d,val);
+   g.appendChild(d);
+  });
+ });
+}
+
+/* CLICK */
+function clickCell(cell,letter){
+ if(cell.classList.contains("found")) return;
+
+ if(cell.classList.contains("selected")){
+  cell.classList.remove("selected");
+  selectedWord=selectedWord.slice(0,-1);
+  selectedCells.pop();
+  return;
+ }
+
+ cell.classList.add("selected");
+ selectedCells.push(cell);
+ selectedWord+=letter;
+
+ check();
+}
+
+/* CHECK */
+function check(){
+ let rev=selectedWord.split("").reverse().join("");
+ if(selectedWord===currentClue.word || rev===currentClue.word){
+  selectedCells.forEach(c=>{c.classList.remove("selected");c.classList.add("found");});
+  selectedCells=[];
+  selectedWord="";
+  found++;
+  updateBar();
+  nextClue();
+ }
+}
+
+/* CLUES */
+function nextClue(){
+ if(queue.length===0){
+   if(skipped.length>0){queue=[...skipped]; skipped=[];}
+   else return finish();
+ }
+ currentClue=queue.shift();
+ document.getElementById("clue").innerText="Clue: "+currentClue.clue;
+}
+
+function skip(){
+ skipped.push(currentClue);
+ nextClue();
+}
+
+/* PROGRESS */
+function updateBar(){
+ document.getElementById("bar").style.width=(found/words.length)*100+"%";
+}
+
+/* FINISH */
+function finish(){
+ clearInterval(interval);
+ let time=Math.floor((Date.now()-startTime)/1000);
+
+ let stars="⭐";
+ if(time<40) stars="⭐⭐⭐";
+ else if(time<80) stars="⭐⭐";
+
+ document.getElementById("overlay").style.display="block";
+ let p=document.getElementById("popup");
+ p.style.display="block";
+
+ p.innerHTML=`
+  <h2>🏆 Completed!</h2>
+  <p>Time: ${time}s</p>
+  <div class="stars">${stars}</div>
+  <br>
+  <button onclick="location.reload()">Play Again</button>
+ `;
+}
+
+</script>
+</body>
+</html>
